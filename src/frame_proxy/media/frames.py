@@ -36,7 +36,8 @@ def decode_frame_at(
     plane = memoryview(buffer)[offset:end]
     pixel_width = descriptor.width * 3
     packed_size = pixel_width * descriptor.height
-    if len(plane) < packed_size:
+    padded_size = descriptor.row_stride * descriptor.height
+    if len(plane) < packed_size or len(plane) < padded_size:
         raise MediaValidationError(
             "frame has insufficient packed pixels",
             code=ErrorCode.FRAME_DECODE,
@@ -44,6 +45,7 @@ def decode_frame_at(
     rows = _unpack_bgr_plane(
         plane,
         pixel_width=pixel_width,
+        row_stride=descriptor.row_stride,
         height=descriptor.height,
         top_down=descriptor.top_down,
     )
@@ -60,13 +62,14 @@ def _unpack_bgr_plane(
     plane: memoryview,
     *,
     pixel_width: int,
+    row_stride: int,
     height: int,
     top_down: bool,
 ) -> tuple[bytes, ...]:
     converted_rows: list[bytes] = []
     for display_row in range(height):
         storage_row = display_row if top_down else height - 1 - display_row
-        start = storage_row * pixel_width
+        start = storage_row * row_stride
         finish = start + pixel_width
         source = plane[start:finish]
         if len(source) != pixel_width:

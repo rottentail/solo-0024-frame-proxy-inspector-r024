@@ -67,9 +67,12 @@ class ClipRecord:
         }
 
         if self.top_down or self.row_stride != self.width * 3:
+            # first_row and the row-step sign both describe the layout. The
+            # reader keys on first_row, which keeps earlier records (written
+            # with the opposite sign spelling) and these records compatible.
             value["frame_layout"] = {
                 "version": 1,
-                "row_step": -self.row_stride if self.top_down else self.row_stride,
+                "row_step": self.row_stride if self.top_down else -self.row_stride,
                 "first_row": 0 if self.top_down else self.height - 1,
                 "pixel_width": self.width * 3,
                 "height": self.height,
@@ -83,7 +86,7 @@ class ClipRecord:
             direction = data.get("top_down", False)
             if not isinstance(direction, bool):
                 raise ValueError("legacy frame direction must be boolean")
-            return False
+            return direction
         if not isinstance(layout, dict) or layout.get("version") != 1:
             raise ValueError("unsupported frame layout")
         step = int(layout["row_step"])
@@ -91,11 +94,20 @@ class ClipRecord:
         first = int(layout["first_row"])
         if step == 0 or height != int(data["height"]):
             raise ValueError("inconsistent frame layout geometry")
-        if first < 0 or first >= height:
-            raise ValueError("frame layout starts outside the image")
         if abs(step) != int(data["row_stride"]):
             raise ValueError("frame layout pitch disagrees with record")
-        return step > 0
+        if height > 1 and first not in (0, height - 1):
+            raise ValueError("frame layout starts outside the image")
+        if height == 1:
+            # One stored row carries no orientation in its placement, and
+            # earlier records wrote the row-step sign with the opposite meaning.
+            direction = data.get("top_down", False)
+            if not isinstance(direction, bool):
+                raise ValueError("legacy frame direction must be boolean")
+            return direction
+        # The storage row that holds display row zero identifies the
+        # orientation regardless of how the row-step sign was spelled.
+        return first == 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ClipRecord":

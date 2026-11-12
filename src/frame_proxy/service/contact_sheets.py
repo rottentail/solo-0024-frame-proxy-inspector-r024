@@ -9,7 +9,7 @@ from frame_proxy.domain.errors import (
 from frame_proxy.domain.models import ContactSheetRecord
 from frame_proxy.domain.policies import ContactSheetRequest, validate_identifier
 from frame_proxy.domain.transitions import transition_contact_sheet
-from frame_proxy.media.avi import AviDescriptor, probe_avi
+from frame_proxy.media.avi import probe_avi
 from frame_proxy.media.contact import compose_grid, plan_grid
 from frame_proxy.media.frames import Frame, decode_frame_at
 from frame_proxy.media.ppm import parse_ppm_header
@@ -77,7 +77,7 @@ class ContactSheetService:
                     ) // 2
                 else:
                     frame_index = scene.representative_frame
-                frames[frame_index] = self._decode_sheet_frame(
+                frames[frame_index] = decode_frame_at(
                     media,
                     descriptor,
                     frame_index,
@@ -115,32 +115,6 @@ class ContactSheetService:
                 "contact sheet composition failed",
                 status=500,
             ) from exc
-
-    @staticmethod
-    def _decode_sheet_frame(
-        media: bytes,
-        descriptor: AviDescriptor,
-        frame_index: int,
-    ) -> Frame:
-        decoded = decode_frame_at(media, descriptor, frame_index)
-        if not descriptor.top_down:
-            return decoded
-        row_size = decoded.width * 3
-        image_size = row_size * decoded.height
-        if len(decoded.rgb) != image_size:
-            raise ValueError("decoded sheet frame has inconsistent geometry")
-        display_rows: list[bytes] = []
-        for row in range(decoded.height):
-            source_row = decoded.height - 1 - row
-            start = source_row * row_size
-            end = start + row_size
-            display_rows.append(decoded.rgb[start:end])
-        return Frame(
-            index=decoded.index,
-            width=decoded.width,
-            height=decoded.height,
-            rgb=b"".join(display_rows),
-        )
 
     def _mark_failed(
         self,
